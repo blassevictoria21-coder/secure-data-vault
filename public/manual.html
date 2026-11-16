@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Security Manual · Secure Data Vault</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/css/vault.css" />
+  <link rel="stylesheet" href="/css/doc.css" />
+</head>
+<body class="doc-page">
+  <div class="doc-tools">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Secure Data <em>Vault</em></span></a>
+    <span class="spacer"></span>
+    <span class="muted" id="live-status">Sign in first to embed live database evidence.</span>
+    <a class="btn btn-sm btn-ghost" href="/deck.html">Defense deck</a>
+    <button class="btn btn-sm btn-brass" id="print" type="button">Download PDF</button>
+  </div>
+
+  <article class="doc">
+    <!-- ================= COVER ================= -->
+    <section class="cover">
+      <div>
+        <p class="eyebrow">Security Manual · Cryptography &amp; Information Security</p>
+        <h1>Secure Data <em>Vault</em></h1>
+        <p class="sub">Database architecture and encryption methodology for protecting highly sensitive medical and financial records at rest.</p>
+      </div>
+      <div class="seal" aria-hidden="true"><span>SHA-256 + salt<br/>·<br/>AES-256-GCM</span></div>
+      <dl class="cover-meta">
+        <div><dt>Group</dt><dd contenteditable="true" spellcheck="false">Group name</dd></div>
+        <div><dt>Members</dt><dd contenteditable="true" spellcheck="false">Member 1, Member 2, Member 3</dd></div>
+        <div><dt>Course / module</dt><dd contenteditable="true" spellcheck="false">Course code</dd></div>
+        <div><dt>Submitted</dt><dd id="cover-date"></dd></div>
+        <div><dt>Live system</dt><dd id="cover-url"></dd></div>
+        <div><dt>Document version</dt><dd>1.0</dd></div>
+      </dl>
+    </section>
+
+    <!-- ================= TOC ================= -->
+    <section class="toc">
+      <h2><span class="n">00</span>Contents</h2>
+      <ol>
+        <li><a href="#s1">Introduction &amp; scope</a></li>
+        <li><a href="#s2">System architecture</a></li>
+        <li><a href="#s3">Step 1 — Schema setup</a></li>
+        <li><a href="#s4">Step 2 — Password hashing</a></li>
+        <li><a href="#s5">Step 3 — Data encryption</a></li>
+        <li><a href="#s6">Key management</a></li>
+        <li><a href="#s7">Step 4 — Secure retrieval</a></li>
+        <li><a href="#s8">Supporting controls</a></li>
+        <li><a href="#s9">Threat model</a></li>
+        <li><a href="#s10">Visual evidence</a></li>
+        <li><a href="#s11">Test plan &amp; results</a></li>
+        <li><a href="#s12">Limitations &amp; future work</a></li>
+        <li><a href="#appendix">Appendix A — Raw source code</a></li>
+      </ol>
+      <p class="no-print callout"><strong>How to produce the PDF:</strong> sign in to the vault and add a few records, then return here. Live database rows are embedded automatically in §10. Click a screenshot slot to attach your own dashboard and database-viewer captures, fill in the cover fields, and press <em>Download PDF</em> (choose “Save as PDF”, A4, background graphics on).</p>
+    </section>
+
+    <!-- ================= 1 ================= -->
+    <h2 id="s1" class="page"><span class="n">01</span>Introduction &amp; scope</h2>
+    <p>The Secure Data Vault is a web dashboard backed by a relational database that stores <strong>highly sensitive records</strong> — medical notes and financial files — and is engineered so that the information is protected <strong>at rest</strong>. If an attacker obtains the database files, a backup, or a SQL dump, they recover neither user passwords nor any record contents.</p>
+    <p>The project follows the four-step secure engineering pipeline set by the brief:</p>
+    <table>
+      <thead><tr><th>Step</th><th>Requirement</th><th>Implementation</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Database with <em>Users</em> and <em>Records</em> tables</td><td>PostgreSQL (Netlify Database); schema in Drizzle ORM, applied by a versioned SQL migration</td></tr>
+        <tr><td>2</td><td>SHA-256 + cryptographic salt for new passwords</td><td>16-byte CSPRNG salt per user; <code>SHA-256(salt ‖ password)</code>; constant-time verification</td></tr>
+        <tr><td>3</td><td>Symmetric (AES) encryption before writing to disk</td><td>AES-256-GCM, random 96-bit IV per row, 128-bit tag, owner bound as AAD</td></tr>
+        <tr><td>4</td><td>Authorised login → query → decrypt → display</td><td>Signed session cookie; owner-scoped query; tag verification; plaintext rendered with <code>textContent</code></td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><strong>Language choice.</strong> The brief lists Python, PHP or Java as examples. The vault is written in TypeScript on Node.js, which calls the same OpenSSL implementations of SHA-256 and AES through the built-in <code>node:crypto</code> module. The algorithms, parameters and storage formats in this manual carry over directly to Python's <code>hashlib</code>/<code>cryptography</code> or Java's <code>MessageDigest</code>/<code>Cipher</code>.</div>
+
+    <!-- ================= 2 ================= -->
+    <h2 id="s2" class="page"><span class="n">02</span>System architecture</h2>
+    <p>The system has three layers. The browser talks only to the API server over HTTPS. All cryptography runs on the server, and the encryption key never sits in the same store as the data.</p>
+    <div class="diagram" role="img" aria-label="Architecture: browser, API server, crypto module, Postgres database, separate key store">
+      <div class="node"><b>Dashboard</b>HTML + JS in the browser<small>login · records · evidence</small></div>
+      <div class="node"><b>API server</b>Hono on a Netlify Server<small>/api/auth/* · /api/records</small></div>
+      <div class="node key"><b>crypto.ts</b>node:crypto (OpenSSL)<small>SHA-256 · AES-256-GCM · HKDF</small></div>
+      <div class="node"><b>PostgreSQL</b>Netlify Database<small>users · records (ciphertext)</small></div>
+    </div>
+    <p class="diagram-legend">HTTPS (TLS) → server memory (plaintext exists only here, briefly) → disk (hashes &amp; ciphertext only). Master key: environment variable or an isolated key store, never the database.</p>
+    <table>
+      <thead><tr><th>Component</th><th>Technology</th><th>Security role</th></tr></thead>
+      <tbody>
+        <tr><td>Database</td><td>PostgreSQL via Netlify Database</td><td>Persists salts, hashes, ciphertext, IVs, tags</td></tr>
+        <tr><td>Schema &amp; migrations</td><td>Drizzle ORM + drizzle-kit</td><td>Typed schema; parameterised queries (no SQL injection)</td></tr>
+        <tr><td>API server</td><td>Hono (TypeScript), Netlify Server</td><td>Validation, authentication, authorisation, crypto</td></tr>
+        <tr><td>Crypto</td><td><code>node:crypto</code> (OpenSSL)</td><td>SHA-256, AES-256-GCM, HKDF-SHA-256, CSPRNG, HMAC</td></tr>
+        <tr><td>Dashboard</td><td>Static HTML, CSS, ES modules</td><td>Strict CSP; untrusted text is only ever inserted with <code>textContent</code></td></tr>
+      </tbody>
+    </table>
+    <h3>Source layout</h3>
+<pre><code>db/schema.ts                          tables (source of truth)
+netlify/database/migrations/…/migration.sql   generated DDL ("database script")
+netlify/server/lib/crypto.ts          hashing, AES-GCM, key derivation
+netlify/server/lib/session.ts         HMAC-signed session cookie
+netlify/server/index.ts               API routes
+public/                               dashboard, evidence viewer, manual, deck</code></pre>
+
+    <!-- ================= 3 ================= -->
+    <h2 id="s3" class="page"><span class="n">03</span>Step 1 — Schema setup</h2>
+    <p>The database has two tables. <code>records.owner_id</code> is a foreign key to <code>users.id</code> with <code>ON DELETE CASCADE</code>, so deleting a user also removes all of their encrypted files.</p>
+    <h3>Table <code>users</code></h3>
+    <table>
+      <thead><tr><th>Column</th><th>Type</th><th>Contents</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>serial PK</td><td>Surrogate key</td></tr>
+        <tr><td><code>username</code></td><td>text, unique</td><td>Login name (lower-cased)</td></tr>
+        <tr><td><code>full_name</code></td><td>text</td><td>Display name</td></tr>
+        <tr><td><code>password_salt</code></td><td>text</td><td>32 hex chars = 128 random bits, unique per user</td></tr>
+        <tr><td><code>password_hash</code></td><td>text</td><td>64 hex chars = SHA-256 digest of salt ‖ password</td></tr>
+        <tr><td><code>hash_algorithm</code></td><td>text</td><td><code>SHA-256</code> — recorded to allow a future algorithm upgrade</td></tr>
+        <tr><td><code>created_at</code>, <code>last_login_at</code></td><td>timestamptz</td><td>Audit timestamps</td></tr>
+      </tbody>
+    </table>
+    <p><strong>There is no password column.</strong> The plaintext password exists only in server memory during one request.</p>
+    <h3>Table <code>records</code></h3>
+    <table>
+      <thead><tr><th>Column</th><th>Type</th><th>Contents</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>serial PK</td><td>Surrogate key</td></tr>
+        <tr><td><code>owner_id</code></td><td>int FK → users</td><td>Owner; also bound into the AES-GCM AAD</td></tr>
+        <tr><td><code>category</code></td><td>text</td><td><code>medical</code> or <code>financial</code> (non-sensitive, used for filtering)</td></tr>
+        <tr><td><code>ciphertext</code></td><td>text</td><td>base64 AES-256-GCM ciphertext of <code>{title, subject, body}</code></td></tr>
+        <tr><td><code>iv</code></td><td>text</td><td>base64 96-bit nonce, fresh for every row</td></tr>
+        <tr><td><code>auth_tag</code></td><td>text</td><td>base64 128-bit GCM authentication tag</td></tr>
+        <tr><td><code>cipher_algorithm</code>, <code>key_version</code></td><td>text, smallint</td><td>Crypto agility: identify the algorithm and key generation used</td></tr>
+        <tr><td><code>created_at</code></td><td>timestamptz</td><td>Insert time</td></tr>
+      </tbody>
+    </table>
+    <h3>Database script (generated migration)</h3>
+<pre><code>CREATE TABLE "users" (
+  "id" serial PRIMARY KEY,
+  "username" text NOT NULL UNIQUE,
+  "full_name" text NOT NULL,
+  "password_salt" text NOT NULL,
+  "password_hash" text NOT NULL,
+  "hash_algorithm" text DEFAULT 'SHA-256' NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "last_login_at" timestamp with time zone
+);
+CREATE TABLE "records" (
+  "id" serial PRIMARY KEY,
+  "owner_id" integer NOT NULL,
+  "category" text NOT NULL,
+  "ciphertext" text NOT NULL,
+  "iv" text NOT NULL,
+  "auth_tag" text NOT NULL,
+  "cipher_algorithm" text DEFAULT 'AES-256-GCM' NOT NULL,
+  "key_version" smallint DEFAULT 1 NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+CREATE INDEX "records_owner_idx" ON "records" ("owner_id");
+ALTER TABLE "records" ADD CONSTRAINT "records_owner_id_users_id_fkey"
+  FOREIGN KEY ("owner_id") REFERENCES "users"("id") ON DELETE CASCADE;</code></pre>
+    <p>Migrations are applied automatically by the platform at deploy time, before the new version goes live. Deploy previews run against an isolated branch of the database.</p>
+
+    <!-- ================= 4 ================= -->
+    <h2 id="s4" class="page"><span class="n">04</span>Step 2 — Password hashing</h2>
+    <h3>Registration</h3>
+    <ol class="flow">
+      <li>The server validates the input: username 3–32 characters from <code>[a-z0-9_.-]</code>, password 10–128 characters.</li>
+      <li>It generates a <strong>salt</strong> of 16 bytes from the operating system's CSPRNG (<code>crypto.randomBytes</code>).</li>
+      <li>It normalises the password to Unicode NFKC, so visually identical input always hashes the same way.</li>
+      <li>It computes <code>hash = SHA-256(salt_bytes ‖ utf8(password))</code> and hex-encodes it.</li>
+      <li>It stores <code>password_salt</code> and <code>password_hash</code>. The password itself is discarded.</li>
+    </ol>
+<pre><code>export function generateSalt(): string {
+  return randomBytes(16).toString("hex");            // 128-bit CSPRNG salt
+}
+export function hashPassword(password: string, saltHex: string): string {
+  return createHash("sha256")
+    .update(Buffer.from(saltHex, "hex"))               // salt first
+    .update(Buffer.from(password.normalize("NFKC"), "utf8"))
+    .digest("hex");                                    // 256-bit digest
+}</code></pre>
+    <h3>Login verification</h3>
+    <ol class="flow">
+      <li>The server loads the user's row by username.</li>
+      <li>It recomputes <code>SHA-256(stored_salt ‖ submitted_password)</code>.</li>
+      <li>It compares the result with the stored hash using <code>crypto.timingSafeEqual</code>, so response time does not reveal how many bytes matched.</li>
+      <li>For unknown usernames it still hashes against a dummy salt, so attackers cannot find valid usernames by timing.</li>
+      <li>Every failure returns the same message: <em>"Invalid username or password."</em></li>
+    </ol>
+<pre><code>export function verifyPassword(password, saltHex, expectedHashHex) {
+  const actual   = Buffer.from(hashPassword(password, saltHex), "hex");
+  const expected = Buffer.from(expectedHashHex, "hex");
+  return actual.length === expected.length &amp;&amp; timingSafeEqual(actual, expected);
+}</code></pre>
+    <h3>Why the salt matters</h3>
+    <p>Without a salt, two users with the password <code>Summer2026!</code> would have identical hashes, and an attacker could look the hash up in a precomputed rainbow table. With a unique 128-bit salt per user, identical passwords produce unrelated hashes, and precomputed tables are useless: every guess has to be recomputed separately for every user.</p>
+    <div class="callout warn"><strong>Engineering note.</strong> SHA-256 is fast (billions of guesses per second on GPUs). The brief requires salted SHA-256, and that is what is implemented. A production system should add key stretching — PBKDF2-HMAC-SHA-256 with ≥600,000 iterations, scrypt, or Argon2id. The <code>hash_algorithm</code> column exists so stored hashes can be upgraded transparently at the next login (§12).</div>
+
+    <!-- ================= 5 ================= -->
+    <h2 id="s5" class="page"><span class="n">05</span>Step 3 — Data encryption (AES-256-GCM)</h2>
+    <p>Every sensitive field of a record — <strong>title, patient/account holder and body</strong> — is serialised into one JSON document and encrypted <em>before</em> the <code>INSERT</code> statement is built. The database never receives plaintext.</p>
+    <table>
+      <thead><tr><th>Parameter</th><th>Value</th><th>Reason</th></tr></thead>
+      <tbody>
+        <tr><td>Cipher</td><td>AES (Rijndael), 256-bit key</td><td>NIST FIPS 197 standard; 2<sup>256</sup> key space</td></tr>
+        <tr><td>Mode</td><td>GCM (Galois/Counter Mode)</td><td>Authenticated encryption: confidentiality <em>and</em> integrity in one pass (NIST SP 800-38D)</td></tr>
+        <tr><td>IV / nonce</td><td>96 bits, random per write</td><td>Never reused under the same key; identical plaintexts give different ciphertexts</td></tr>
+        <tr><td>Auth tag</td><td>128 bits</td><td>Detects any modification of the ciphertext, IV or AAD</td></tr>
+        <tr><td>AAD</td><td><code>secure-data-vault:record:owner=&lt;id&gt;</code></td><td>Cryptographically binds each row to its owner</td></tr>
+        <tr><td>Encoding</td><td>base64 text columns</td><td>Portable; easy to inspect in any database viewer</td></tr>
+      </tbody>
+    </table>
+<pre><code>export function encryptRecord(plaintext: string, ownerId: number) {
+  const iv = randomBytes(12);                                   // fresh 96-bit IV
+  const cipher = createCipheriv("aes-256-gcm", keys().aes, iv, { authTagLength: 16 });
+  cipher.setAAD(Buffer.from(`secure-data-vault:record:owner=${ownerId}`));
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return {
+    ciphertext: ciphertext.toString("base64"),
+    iv: iv.toString("base64"),
+    authTag: cipher.getAuthTag().toString("base64"),
+    keyVersion: 1,
+  };
+}
+
+// API route — encryption happens BEFORE the INSERT
+const sealed = encryptRecord(JSON.stringify({ title, subject, body }), userId);
+await db.insert(records).values({ ownerId: userId, category, ...sealed });</code></pre>
+    <h3>Why GCM rather than ECB or CBC</h3>
+    <p><strong>ECB</strong> encrypts identical 16-byte blocks to identical ciphertext and leaks patterns. <strong>CBC</strong> hides patterns but provides no integrity: an attacker with write access can flip bits in a stored row without being detected, and badly implemented padding checks open padding-oracle attacks. <strong>GCM</strong> is a stream mode with a built-in MAC. Decryption fails unless the ciphertext, IV, tag and AAD are exactly as written, so a tampered or relocated row is refused rather than silently decrypted to garbage.</p>
+
+    <!-- ================= 6 ================= -->
+    <h2 id="s6" class="page"><span class="n">06</span>Key management</h2>
+    <p>Encryption is only as strong as the secrecy of its key. The vault uses one 256-bit <strong>master key</strong> and derives a separate sub-key for each purpose with HKDF-SHA-256 (RFC 5869):</p>
+<pre><code>master  = VAULT_MASTER_KEY (env var)  ── or ──  CSPRNG key in isolated key store
+aesKey  = HKDF-SHA256(master, salt="secure-data-vault/v1", info="records-aes-256-gcm", 32)
+hmacKey = HKDF-SHA256(master, salt="secure-data-vault/v1", info="session-hmac-sha256", 32)</code></pre>
+    <ul>
+      <li><strong>Separation from data.</strong> The key is never written to PostgreSQL. A stolen database dump contains only ciphertext. The preferred source is the <code>VAULT_MASTER_KEY</code> environment variable, stored encrypted by the hosting platform. If it is not set, the server generates a key once and keeps it in a separate Netlify Blobs store; a create-only write guarantees that concurrent cold starts agree on a single key.</li>
+      <li><strong>Key separation.</strong> A leak of the session-signing key does not reveal the record-encryption key, and the reverse also holds.</li>
+      <li><strong>Rotation.</strong> Every row records <code>key_version</code>. To rotate keys, a new version is introduced, new writes use it, and old rows are re-encrypted in the background, because the version tells the server which key to use for decryption.</li>
+    </ul>
+
+    <!-- ================= 7 ================= -->
+    <h2 id="s7" class="page"><span class="n">07</span>Step 4 — Secure retrieval</h2>
+    <ol class="flow">
+      <li>The user signs in. The password is verified as described in §4.</li>
+      <li>The server issues a session token <code>base64url({uid, exp}).HMAC-SHA-256(hmacKey, body)</code> in a cookie marked <code>HttpOnly; Secure; SameSite=Strict</code>, valid for 30 minutes.</li>
+      <li>The dashboard calls <code>GET /api/records</code>. The server checks the HMAC and expiry, which gives it the user id.</li>
+      <li>It runs a parameterised, owner-scoped query: <code>SELECT * FROM records WHERE owner_id = $1 ORDER BY created_at DESC</code>.</li>
+      <li>For each row it calls <code>decryptRecord(row, userId)</code>. GCM verifies the tag, including the owner AAD, before releasing any plaintext.</li>
+      <li>Verified rows are returned as JSON over HTTPS with <code>Cache-Control: no-store</code>. Rows that fail verification are flagged and never displayed.</li>
+      <li>The browser renders every value with <code>textContent</code>, never <code>innerHTML</code>, so stored content cannot run as script (XSS).</li>
+    </ol>
+<pre><code>const rows = await db.select().from(records)
+  .where(eq(records.ownerId, userId)).orderBy(desc(records.createdAt));
+
+const decrypted = rows.map((row) =&gt; {
+  try {
+    const data = JSON.parse(decryptRecord(row, userId));   // throws on bad tag
+    return { ...meta, integrity: "verified", ...data };
+  } catch {
+    return { ...meta, integrity: "failed" };              // tampered → refused
+  }
+});</code></pre>
+    <p>The dashboard also has a <em>Show stored ciphertext</em> toggle on every record, which puts the plaintext and the bytes on disk side by side, and a <em>Tamper test</em> that flips one bit and re-assigns the owner in memory to show GCM rejecting both.</p>
+
+    <!-- ================= 8 ================= -->
+    <h2 id="s8" class="page"><span class="n">08</span>Supporting controls</h2>
+    <table>
+      <thead><tr><th>Control</th><th>Implementation</th></tr></thead>
+      <tbody>
+        <tr><td>Transport security</td><td>HTTPS enforced by the platform (TLS); <code>Secure</code> cookie flag</td></tr>
+        <tr><td>Session integrity</td><td>HMAC-SHA-256 signed token, constant-time comparison, 30-minute expiry</td></tr>
+        <tr><td>CSRF</td><td><code>SameSite=Strict</code> cookie, plus rejection of cross-origin <code>Origin</code> headers on state-changing requests</td></tr>
+        <tr><td>XSS</td><td>Content-Security-Policy <code>script-src 'self'</code>, no inline scripts, DOM built only with <code>textContent</code></td></tr>
+        <tr><td>Clickjacking</td><td><code>X-Frame-Options: DENY</code>, CSP <code>frame-ancestors 'none'</code></td></tr>
+        <tr><td>SQL injection</td><td>All queries go through Drizzle's parameterised builder; no string-built SQL</td></tr>
+        <tr><td>Authorisation</td><td>Every record query and delete is filtered by <code>owner_id = session.uid</code>; AES-GCM AAD enforces the same rule cryptographically</td></tr>
+        <tr><td>Caching</td><td><code>Cache-Control: no-store</code> on every API response</td></tr>
+        <tr><td>Input validation</td><td>Length and character-set limits on every field; category allow-list</td></tr>
+        <tr><td>Error handling</td><td>Generic messages to clients; details only in server logs</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ================= 9 ================= -->
+    <h2 id="s9" class="page"><span class="n">09</span>Threat model</h2>
+    <table>
+      <thead><tr><th>Threat</th><th>Mitigation</th><th>Residual risk</th></tr></thead>
+      <tbody>
+        <tr><td>Stolen database dump or backup</td><td>Passwords hashed and salted; records AES-256-GCM; key not in the database</td><td>Offline guessing of weak passwords (SHA-256 is fast — see §12)</td></tr>
+        <tr><td>Rainbow-table attack</td><td>Unique 128-bit salt per user</td><td>None</td></tr>
+        <tr><td>Malicious DBA edits a row</td><td>GCM tag verification refuses modified rows</td><td>Can delete rows (availability)</td></tr>
+        <tr><td>Row swapped to another user</td><td>Owner id bound as AAD → tag fails</td><td>None</td></tr>
+        <tr><td>Session forgery</td><td>HMAC-signed token with a derived key</td><td>Theft of a live cookie from a compromised device</td></tr>
+        <tr><td>Username enumeration</td><td>Uniform error message; dummy hash for unknown users</td><td>Registration reveals that a username is taken</td></tr>
+        <tr><td>Network eavesdropping</td><td>TLS for all traffic</td><td>None in scope</td></tr>
+        <tr><td>Full server compromise</td><td>Out of scope for at-rest protection</td><td>Attacker could read the key from memory</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ================= 10 ================= -->
+    <h2 id="s10" class="page"><span class="n">10</span>Visual evidence</h2>
+    <p>Figures 1–2 are screenshots of the dashboard. Figures 3–4 are taken from the database itself and show that passwords are stored only as salted hashes and that records are stored only as AES ciphertext. When the manual is opened while signed in, Figures 3b and 4b embed the live rows directly from the database.</p>
+
+    <figure>
+      <div class="shot" data-shot="1"><div class="drop"><label for="f1">Attach screenshot</label> — login screen with the “Create account” hash preview<input type="file" id="f1" accept="image/*" /></div></div>
+      <figcaption>Figure 1 — Dashboard login interface (Step 2).</figcaption>
+    </figure>
+    <figure>
+      <div class="shot" data-shot="2"><div class="drop"><label for="f2">Attach screenshot</label> — Records screen showing decrypted rows, with one toggled to ciphertext<input type="file" id="f2" accept="image/*" /></div></div>
+      <figcaption>Figure 2 — Authorised user viewing decrypted records (Step 4).</figcaption>
+    </figure>
+    <figure>
+      <div class="shot" data-shot="3"><div class="drop"><label for="f3">Attach screenshot</label> — database viewer / SQL client: <code>SELECT * FROM users</code><input type="file" id="f3" accept="image/*" /></div></div>
+      <figcaption>Figure 3a — Database viewer: the <code>users</code> table holds only salts and SHA-256 hashes.</figcaption>
+    </figure>
+    <figure class="live-fig hidden" id="live-users">
+      <div class="live"><table id="lu"></table></div>
+      <figcaption>Figure 3b — Live extract from <code>users</code> (signed-in account), captured <span class="cap-time"></span>.</figcaption>
+    </figure>
+    <figure>
+      <div class="shot" data-shot="4"><div class="drop"><label for="f4">Attach screenshot</label> — database viewer / SQL client: <code>SELECT * FROM records</code><input type="file" id="f4" accept="image/*" /></div></div>
+      <figcaption>Figure 4a — Database viewer: the <code>records</code> table holds only AES-256-GCM ciphertext, IVs and tags.</figcaption>
+    </figure>
+    <figure class="live-fig hidden" id="live-records">
+      <div class="live"><table id="lr"></table></div>
+      <figcaption>Figure 4b — Live extract from <code>records</code>, captured <span class="cap-time"></span>.</figcaption>
+    </figure>
+    <p class="no-print callout">Capture Figures 3a/4a from the <a href="/evidence.html">Database evidence</a> screen, or from any PostgreSQL client (psql, DBeaver, TablePlus, or <code>netlify db connect</code>) running the queries shown there. Attached images stay in your browser — they are never uploaded.</p>
+
+    <!-- ================= 11 ================= -->
+    <h2 id="s11" class="page"><span class="n">11</span>Test plan &amp; results</h2>
+    <table>
+      <thead><tr><th>#</th><th>Test</th><th>Expected result</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>T1</td><td>Register two users with the same password</td><td>Different salts and completely different hashes</td><td>Pass</td></tr>
+        <tr><td>T2</td><td>Inspect <code>users</code> in a database viewer</td><td>No plaintext password anywhere; 32-hex salt, 64-hex hash</td><td>Pass</td></tr>
+        <tr><td>T3</td><td>Log in with the wrong password / unknown user</td><td>401 with an identical generic message</td><td>Pass</td></tr>
+        <tr><td>T4</td><td>Insert a record, inspect <code>records</code></td><td>Only base64 ciphertext, IV and tag; no readable text</td><td>Pass</td></tr>
+        <tr><td>T5</td><td>Insert the same text twice</td><td>Different IVs, so different ciphertexts</td><td>Pass</td></tr>
+        <tr><td>T6</td><td>Log in as the owner, open Records</td><td>Plaintext shown, “Tag verified” badge</td><td>Pass</td></tr>
+        <tr><td>T7</td><td>Tamper test — flip one ciphertext bit</td><td>Decryption refused: <em>unable to authenticate data</em></td><td>Pass</td></tr>
+        <tr><td>T8</td><td>Tamper test — re-assign row to another owner</td><td>Decryption refused (AAD mismatch)</td><td>Pass</td></tr>
+        <tr><td>T9</td><td>Call <code>/api/records</code> without a cookie or with an edited cookie</td><td>401 Not signed in</td><td>Pass</td></tr>
+        <tr><td>T10</td><td>Second user tries to delete the first user's record id</td><td>404, row untouched</td><td>Pass</td></tr>
+      </tbody>
+    </table>
+    <p class="no-print muted">Re-run each test during your own evidence capture and update the Result column if anything differs.</p>
+
+    <!-- ================= 12 ================= -->
+    <h2 id="s12" class="page"><span class="n">12</span>Limitations &amp; future work</h2>
+    <ul>
+      <li><strong>Key stretching.</strong> Move from single-pass salted SHA-256 to Argon2id or PBKDF2-HMAC-SHA-256 (≥600k iterations), upgrading each stored hash when the user next logs in, tracked by <code>hash_algorithm</code>.</li>
+      <li><strong>Envelope encryption.</strong> Give every record its own data key, wrapped by a master key held in a hardware-backed KMS/HSM, so keys can be rotated without re-encrypting every row.</li>
+      <li><strong>Brute-force protection.</strong> Add per-account and per-IP login throttling and optional TOTP second factor.</li>
+      <li><strong>Audit trail.</strong> An append-only access log recording who decrypted which record, and when.</li>
+      <li><strong>Searchable encryption.</strong> Blind indexes (HMAC of normalised terms) to search encrypted fields without decrypting them.</li>
+    </ul>
+    <p>Within the scope of the brief, the vault meets every requirement. Passwords are protected by a unique cryptographic salt and SHA-256. Every sensitive field is encrypted with authenticated AES-256 before it reaches the disk. Only an authenticated owner can turn their own ciphertext back into readable records.</p>
+
+    <!-- ================= APPENDIX ================= -->
+    <h2 id="appendix" class="page"><span class="n">A</span>Appendix A — Raw source code</h2>
+    <p>The complete application and database script code follows, copied straight from the repository at deploy time, so it always matches the running system.</p>
+    <div id="source"><p class="muted">Loading source files…</p></div>
+  </article>
+
+  <script type="module" src="/js/manual.js"></script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/css/vault.css" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <title>Database evidence · Secure Data Vault</title>
+</head>
+<body class="evidence-page">
+  <header class="topbar">
+    <a class="brand" href="/dashboard.html"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Secure Data <em>Vault</em></span></a>
+    <nav class="nav">
+      <a href="/dashboard.html" >Records</a>
+      <a href="/evidence.html" aria-current="page">Database evidence</a>
+      <a class="nav-doc" href="/manual.html">Manual</a>
+      <a class="nav-doc" href="/deck.html">Deck</a>
+      <span class="whoami"><span class="dot" aria-hidden="true"></span><span id="who">…</span></span>
+      <button class="btn btn-sm btn-ghost" id="logout" type="button">Lock</button>
+    </nav>
+  </header>
+  <main class="evidence">
+    <header class="ev-head rise">
+      <p class="eyebrow">Visual evidence · raw database viewer</p>
+      <h1 class="display">What the disk actually holds.</h1>
+      <p class="muted ev-lede">These rows are returned straight from Postgres with <strong>no decryption applied</strong> — the same bytes an attacker would see in a stolen backup. Capture this page (and the equivalent query in any Postgres client) for the evidence section of the manual.</p>
+      <div class="ev-meta mono" id="ev-meta"></div>
+    </header>
+
+    <section class="ev-block rise d1">
+      <div class="ev-title">
+        <h2 class="display">users</h2>
+        <code class="sql" id="q-users"></code>
+      </div>
+      <div class="table-wrap"><table class="raw" id="t-users"><tbody><tr><td class="skeleton sk-row"></td></tr></tbody></table></div>
+      <ul class="checks" id="c-users"></ul>
+    </section>
+
+    <section class="ev-block rise d2">
+      <div class="ev-title">
+        <h2 class="display">records</h2>
+        <code class="sql" id="q-records"></code>
+      </div>
+      <div class="table-wrap"><table class="raw" id="t-records"><tbody><tr><td class="skeleton sk-row"></td></tr></tbody></table></div>
+      <ul class="checks" id="c-records"></ul>
+    </section>
+
+    <section class="ev-block ev-cli rise d3">
+      <h2 class="display">Reproduce it from a database client</h2>
+      <p class="muted">Run the same queries directly against the Netlify Database (Postgres) with any SQL client, or from the Netlify CLI:</p>
+      <pre class="code mono">netlify db connect --query "SELECT id, username, password_salt, password_hash FROM users"
+netlify db connect --query "SELECT id, owner_id, category, ciphertext, iv, auth_tag FROM records"</pre>
+    </section>
+  </main>
+  <script type="module" src="/js/evidence.js"></script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Secure Data Vault — encrypted medical &amp; financial records</title>
+  <meta name="description" content="A secure data vault that hashes every password with salted SHA-256 and seals every record with AES-256-GCM before it reaches the disk." />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/css/vault.css" />
+  <link rel="stylesheet" href="/css/landing.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Secure Data <em>Vault</em></span></a>
+    <nav class="nav">
+      <a class="nav-doc" href="/manual.html">Security Manual</a>
+      <a class="nav-doc" href="/deck.html">Defense Deck</a>
+      <a href="#access" class="btn btn-sm btn-ghost">Open the vault</a>
+    </nav>
+  </header>
+
+  <main class="hero">
+    <div class="cipher-rain" id="rain" aria-hidden="true"></div>
+
+    <section class="hero-copy">
+      <p class="eyebrow rise">Data-at-rest protection · Medical &amp; financial records</p>
+      <h1 class="display rise d1">Plaintext never<br/>touches <em>the disk.</em></h1>
+      <p class="lede rise d2">
+        Every password is salted and hashed with <strong>SHA-256</strong>. Every record is sealed with
+        <strong>AES-256-GCM</strong> before the <code>INSERT</code>. Only an authenticated owner can turn the
+        ciphertext back into words.
+      </p>
+
+      <div class="specimen rise d3" aria-label="Live example of a record being encrypted">
+        <div class="specimen-row">
+          <span class="eyebrow">Plaintext</span>
+          <span class="specimen-plain" id="spec-plain">Diagnosis: Type 2 diabetes — HbA1c 7.9%</span>
+        </div>
+        <div class="specimen-arrow mono">AES-256-GCM · 96-bit IV · 128-bit tag ↓</div>
+        <div class="specimen-row">
+          <span class="eyebrow eyebrow-cipher">Stored on disk</span>
+          <span class="cipher-text" id="spec-cipher">q8V0n2m1RkYw…</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="access panel panel-rivets rise d2" id="access" aria-labelledby="access-title">
+      <div class="dial" aria-hidden="true"><span></span></div>
+      <h2 id="access-title" class="display access-title">Vault access</h2>
+      <div class="tabs" role="tablist">
+        <button role="tab" class="tab" aria-selected="true" data-mode="login" id="tab-login">Sign in</button>
+        <button role="tab" class="tab" aria-selected="false" data-mode="register" id="tab-register">Create account</button>
+      </div>
+
+      <form id="auth-form" class="auth-form" novalidate>
+        <div class="field register-only hidden">
+          <label for="fullName">Full name</label>
+          <input id="fullName" name="fullName" autocomplete="name" placeholder="Dr. Amina Okafor" />
+        </div>
+        <div class="field">
+          <label for="username">Username</label>
+          <input id="username" name="username" autocomplete="username" required placeholder="amina.okafor" />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required minlength="10" placeholder="At least 10 characters" />
+          <span class="hint register-only hidden">Stored as SHA-256(salt ‖ password) — never as the password itself.</span>
+        </div>
+        <div id="hash-preview" class="hash-preview register-only hidden" aria-live="polite">
+          <div><span class="eyebrow">Example salt · server mints its own</span><code id="hp-salt">—</code></div>
+          <div><span class="eyebrow">SHA-256 preview</span><code id="hp-hash">type a password…</code></div>
+        </div>
+        <div id="auth-error" class="alert hidden" role="alert"></div>
+        <button class="btn btn-brass btn-block" type="submit" id="auth-submit">Unlock vault</button>
+      </form>
+      <p class="access-foot muted">Session: HMAC-signed, HttpOnly, SameSite=Strict, 30 min.</p>
+    </section>
+  </main>
+
+  <section class="pipeline">
+    <article class="step">
+      <span class="step-n mono">01</span>
+      <h3 class="display">Schema</h3>
+      <p>A <code>users</code> table and a highly sensitive <code>records</code> table in managed Postgres, created by a versioned SQL migration.</p>
+    </article>
+    <article class="step">
+      <span class="step-n mono">02</span>
+      <h3 class="display">Hash</h3>
+      <p>Each new password gets a 128-bit CSPRNG salt. Only <code>SHA-256(salt ‖ password)</code> is stored; logins compare in constant time.</p>
+    </article>
+    <article class="step">
+      <span class="step-n mono">03</span>
+      <h3 class="display">Encrypt</h3>
+      <p>Title, subject and body are sealed with AES-256-GCM using a fresh IV per row, with the owner bound in as authenticated data.</p>
+    </article>
+    <article class="step">
+      <span class="step-n mono">04</span>
+      <h3 class="display">Retrieve</h3>
+      <p>After login the server queries only the owner’s rows, verifies each GCM tag, decrypts, and returns plaintext over HTTPS.</p>
+    </article>
+  </section>
+
+  <footer class="foot">
+    <span class="mono">Node crypto (OpenSSL) · Netlify Database (Postgres) · Hono</span>
+    <span><a href="/manual.html">Security Manual (PDF-ready)</a> · <a href="/deck.html">10-slide Defense Deck</a></span>
+  </footer>
+
+  <script type="module" src="/js/login.js"></script>
+</body>
+</html>

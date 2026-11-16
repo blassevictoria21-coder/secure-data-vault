@@ -1,0 +1,105 @@
+/* Security Manual — screen + print (A4) */
+.doc-page { background: #e9e4d8; color: #1a1b1e; }
+.doc-page::before { opacity: .035; }
+.doc-tools {
+  position: sticky; top: 0; z-index: 50; display: flex; gap: 12px; align-items: center;
+  padding: 12px clamp(16px, 4vw, 40px); background: var(--steel-950); color: var(--bone);
+  border-bottom: 1px solid var(--steel-800);
+}
+.doc-tools .spacer { flex: 1; }
+.doc-tools .muted { font-size: 12px; }
+.doc {
+  max-width: 860px; margin: 40px auto 80px; background: #f7f4ec; padding: 72px 80px;
+  box-shadow: 0 30px 60px -30px rgba(0,0,0,.35); font: 400 14.5px/1.7 var(--f-body);
+}
+.doc h1, .doc h2, .doc h3 { font-family: var(--f-display); color: #121315; }
+.doc h2 { font-size: 34px; margin: 56px 0 6px; padding-top: 18px; border-top: 2px solid #121315; display: flex; gap: 14px; align-items: baseline; }
+.doc h2 .n { font: 500 13px var(--f-mono); color: #8c6b2a; }
+.doc h3 { font-size: 23px; margin: 30px 0 4px; }
+.doc p, .doc li { color: #2b2c30; }
+.doc a { color: #8c6b2a; text-decoration: underline; }
+.doc code { font: 12.5px var(--f-mono); background: #ebe5d6; padding: 1px 5px; border-radius: 2px; color: #6e2f17; }
+.doc pre {
+  font: 11.5px/1.55 var(--f-mono); background: #16171a; color: #e3ddcf; padding: 16px 18px; border-radius: 4px;
+  overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+}
+.doc pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+.doc table { width: 100%; border-collapse: collapse; margin: 14px 0 6px; font-size: 13px; }
+.doc th { text-align: left; font: 500 10.5px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: #5d5a52; border-bottom: 1.5px solid #121315; padding: 8px 10px 6px 0; }
+.doc td { border-bottom: 1px solid #d8d1c1; padding: 8px 10px 8px 0; vertical-align: top; }
+.doc td code { white-space: nowrap; }
+.doc .callout { border-left: 3px solid #8c6b2a; background: #efe8d6; padding: 12px 16px; margin: 18px 0; }
+.doc .callout.warn { border-color: #a8482a; background: #f3e3da; }
+
+.cover { min-height: 920px; display: grid; align-content: space-between; padding-bottom: 20px; }
+.cover .eyebrow { color: #8c6b2a; }
+.cover h1 { font-size: 92px; line-height: .95; margin: 22px 0 18px; }
+.cover h1 em { color: #8c6b2a; }
+.cover .sub { font-size: 18px; max-width: 520px; color: #3a3b40; }
+.cover-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 30px; font-size: 13px; border-top: 2px solid #121315; padding-top: 18px; }
+.cover-meta dt { font: 500 10px var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: #6d6a62; }
+.cover-meta dd { margin: 3px 0 0; min-height: 1.4em; }
+.cover-meta [contenteditable] { border-bottom: 1px dashed #b8b0a0; outline: none; }
+.seal { width: 180px; height: 180px; border-radius: 50%; border: 2px solid #121315; display: grid; place-items: center; position: relative; }
+.seal::before { content: ""; position: absolute; inset: 10px; border-radius: 50%; border: 1px dashed #8c6b2a; }
+.seal span { font: 500 11px/1.4 var(--f-mono); letter-spacing: .14em; text-align: center; text-transform: uppercase; }
+
+.toc ol { columns: 2; column-gap: 40px; padding-left: 20px; }
+.toc li { margin-bottom: 4px; }
+
+.diagram { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin: 20px 0; align-items: stretch; }
+.diagram .node { border: 1.5px solid #121315; padding: 12px; background: #fff; font-size: 12px; position: relative; }
+.diagram .node + .node { border-left: 0; }
+.diagram .node b { display: block; font: 400 19px var(--f-display); margin-bottom: 4px; }
+.diagram .node small { font: 10.5px var(--f-mono); color: #6d6a62; display: block; }
+.diagram .node.key { background: #16171a; color: #e3ddcf; }
+.diagram .node.key small { color: #b9b2a3; }
+.diagram-legend { font: 11px var(--f-mono); color: #6d6a62; margin-top: -10px; }
+
+.flow { counter-reset: f; list-style: none; padding: 0; }
+.flow li { counter-increment: f; display: grid; grid-template-columns: 34px 1fr; gap: 10px; margin-bottom: 8px; }
+.flow li::before { content: counter(f, decimal-leading-zero); font: 500 12px var(--f-mono); color: #8c6b2a; padding-top: 2px; }
+
+figure { margin: 22px 0; }
+figcaption { font: 11.5px var(--f-mono); color: #5d5a52; margin-top: 8px; }
+.shot {
+  border: 1.5px dashed #b8b0a0; min-height: 200px; display: grid; place-items: center; text-align: center;
+  padding: 18px; background: #fbf9f3; position: relative;
+}
+.shot img { max-width: 100%; display: block; }
+.shot.has-img { border-style: solid; border-color: #121315; padding: 0; background: #fff; }
+.shot .drop { font-size: 13px; color: #6d6a62; }
+.shot .drop label { color: #8c6b2a; cursor: pointer; text-decoration: underline; }
+.shot input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.live { background: #16171a; color: #e3ddcf; padding: 14px; border-radius: 4px; overflow-x: auto; }
+.live table { font: 10.5px/1.45 var(--f-mono); margin: 0; }
+.live th { color: #b9b2a3; border-color: #3a3f48; }
+.live td { border-color: #2a2e35; color: #e3ddcf; word-break: break-all; }
+.live td.c { color: #f08a63; }
+
+.src-file { margin: 22px 0; break-inside: auto; }
+.src-file h4 { font: 500 12px var(--f-mono); margin: 0 0 6px; display: flex; justify-content: space-between; color: #121315; }
+.src-file h4 span { color: #6d6a62; font-weight: 400; }
+.src-file pre { counter-reset: ln; }
+
+@media (max-width: 760px) {
+  .doc { padding: 40px 22px; margin: 0; }
+  .cover h1 { font-size: 58px; }
+  .diagram { grid-template-columns: 1fr 1fr; }
+  .toc ol { columns: 1; }
+}
+
+@page { size: A4; margin: 18mm 16mm 20mm; }
+@media print {
+  .doc-page { background: #fff; }
+  .doc-page::before, .doc-tools, .no-print { display: none !important; }
+  .doc { margin: 0; padding: 0; box-shadow: none; max-width: none; background: #fff; font-size: 11pt; }
+  .cover { min-height: 250mm; break-after: page; }
+  .toc { break-after: page; }
+  .doc h2 { break-after: avoid; }
+  .doc h2.page { break-before: page; }
+  .doc pre, .doc table, figure, .diagram { break-inside: avoid; }
+  .src-file pre { break-inside: auto; font-size: 8pt; }
+  .shot:not(.has-img) .drop label { text-decoration: none; }
+  a { text-decoration: none !important; }
+}

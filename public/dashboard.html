@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/css/vault.css" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <title>Records · Secure Data Vault</title>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/dashboard.html"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Secure Data <em>Vault</em></span></a>
+    <nav class="nav">
+      <a href="/dashboard.html" aria-current="page">Records</a>
+      <a href="/evidence.html" >Database evidence</a>
+      <a class="nav-doc" href="/manual.html">Manual</a>
+      <a class="nav-doc" href="/deck.html">Deck</a>
+      <span class="whoami"><span class="dot" aria-hidden="true"></span><span id="who">…</span></span>
+      <button class="btn btn-sm btn-ghost" id="logout" type="button">Lock</button>
+    </nav>
+  </header>
+  <main class="app">
+    <aside class="side">
+      <section class="rise">
+        <p class="eyebrow">Signed in as</p>
+        <h1 class="display side-name" id="fullname">&nbsp;</h1>
+        <dl class="stats mono">
+          <div><dt>Records</dt><dd id="stat-total">—</dd></div>
+          <div><dt>Medical</dt><dd id="stat-med">—</dd></div>
+          <div><dt>Financial</dt><dd id="stat-fin">—</dd></div>
+          <div><dt>Tags verified</dt><dd id="stat-ok">—</dd></div>
+        </dl>
+      </section>
+
+      <form id="new-record" class="panel panel-rivets new-record rise d1" novalidate>
+        <h2 class="display">Seal a new record</h2>
+        <p class="muted small">Encrypted with AES-256-GCM on the server <em>before</em> it is written to the database.</p>
+        <div class="seg" role="radiogroup" aria-label="Category">
+          <label><input type="radio" name="category" value="medical" checked /><span>Medical</span></label>
+          <label><input type="radio" name="category" value="financial" /><span>Financial</span></label>
+        </div>
+        <div class="field"><label for="r-title">Title</label><input id="r-title" name="title" maxlength="120" required placeholder="Cardiology consult — Mar 2026" /></div>
+        <div class="field"><label for="r-subject">Patient / account holder</label><input id="r-subject" name="subject" maxlength="120" placeholder="Jordan Reyes · MRN 448-120" /></div>
+        <div class="field"><label for="r-body">Sensitive contents</label><textarea id="r-body" name="body" maxlength="10000" required placeholder="Echocardiogram shows mild mitral regurgitation…"></textarea></div>
+        <div id="rec-error" class="alert hidden" role="alert"></div>
+        <div class="row">
+          <button class="btn btn-ghost btn-sm" type="button" id="fill-sample">Fill sample</button>
+          <button class="btn btn-brass" type="submit" id="rec-submit">Encrypt &amp; store</button>
+        </div>
+      </form>
+    </aside>
+
+    <section class="main">
+      <div class="main-head rise">
+        <div>
+          <p class="eyebrow">Step 4 · Secure retrieval</p>
+          <h2 class="display main-title">Your decrypted records</h2>
+          <p class="muted">Queried by owner, GCM tag verified, then decrypted in server memory. Toggle any row to see exactly what the database holds.</p>
+        </div>
+        <div class="filters" role="tablist" aria-label="Filter records">
+          <button class="chip" aria-pressed="true" data-filter="all">All</button>
+          <button class="chip" aria-pressed="false" data-filter="medical">Medical</button>
+          <button class="chip" aria-pressed="false" data-filter="financial">Financial</button>
+        </div>
+      </div>
+
+      <div id="receipt" class="receipt hidden" aria-live="polite"></div>
+      <div id="list" class="list">
+        <div class="skeleton sk-card"></div><div class="skeleton sk-card"></div><div class="skeleton sk-card"></div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="tamper" class="modal">
+    <form method="dialog" class="modal-inner">
+      <p class="eyebrow">Integrity check · AES-GCM authentication tag</p>
+      <h2 class="display">Tamper test</h2>
+      <div id="tamper-body" class="tamper-body"></div>
+      <button class="btn" value="close">Close</button>
+    </form>
+  </dialog>
+
+  <script type="module" src="/js/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Defense Deck · Secure Data Vault</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/css/vault.css" />
+  <link rel="stylesheet" href="/css/deck.css" />
+</head>
+<body class="deck-page">
+  <div class="deck" id="deck">
+
+    <!-- 1 -->
+    <section class="slide s-title" data-notes="Introduce the group and the brief: build a vault that protects medical and financial data at rest. Today: how it is built, how it is proven, and why the design holds up.">
+      <div class="dial-lg" aria-hidden="true"><span></span></div>
+      <p class="eyebrow">Project defense · Cryptography &amp; Information Security</p>
+      <h1 class="display">Secure Data<br/><em>Vault</em></h1>
+      <p class="lead">Salted SHA-256 passwords. AES-256-GCM records.<br/>Plaintext never touches the disk.</p>
+      <p class="byline mono" contenteditable="true" spellcheck="false">Group name · Member 1 · Member 2 · Member 3</p>
+    </section>
+
+    <!-- 2 -->
+    <section class="slide" data-notes="Most breaches do not watch screens; they take copies: backups, dumps, stolen disks, insiders. Our success criterion is that a full copy of the database is useless on its own.">
+      <p class="eyebrow">02 · The problem</p>
+      <h2 class="display">Breaches steal <em>disks</em>,<br/>not screens.</h2>
+      <div class="grid3">
+        <div class="card"><b>Stolen backup</b><p>A snapshot or SQL dump leaves the building.</p></div>
+        <div class="card"><b>Curious insider</b><p>A DBA with read access browses tables.</p></div>
+        <div class="card"><b>Injected query</b><p>An attacker exfiltrates rows in bulk.</p></div>
+      </div>
+      <p class="goal"><span class="mono">Design goal →</span> a complete copy of the database yields <strong>no passwords</strong> and <strong>no readable records</strong>.</p>
+    </section>
+
+    <!-- 3 -->
+    <section class="slide" data-notes="Three tiers. The browser only speaks HTTPS to the API. All cryptography lives in one auditable module. Postgres holds only hashes and ciphertext. The key lives somewhere else entirely.">
+      <p class="eyebrow">03 · Architecture</p>
+      <h2 class="display">Three tiers, one <em>trust boundary</em>.</h2>
+      <div class="arch">
+        <div class="an"><span class="mono">browser</span><b>Dashboard</b><small>HTML · JS · strict CSP</small></div>
+        <div class="aa mono">HTTPS →</div>
+        <div class="an"><span class="mono">server</span><b>Hono API</b><small>auth · validation · authorisation</small></div>
+        <div class="aa mono">↔</div>
+        <div class="an an-key"><span class="mono">crypto.ts</span><b>node:crypto</b><small>SHA-256 · AES-GCM · HKDF</small></div>
+        <div class="aa mono">→ disk</div>
+        <div class="an"><span class="mono">postgres</span><b>users · records</b><small>hashes &amp; ciphertext only</small></div>
+      </div>
+      <p class="foot-note mono">Master key: env var / isolated key store — never in the database. Plaintext exists only in server memory, per request.</p>
+    </section>
+
+    <!-- 4 -->
+    <section class="slide" data-notes="Step 1. Two tables, as specified. Note what is missing: no password column, no plaintext title or body. The category is the only clear-text attribute, deliberately non-sensitive. The algorithm and version columns give us crypto agility.">
+      <p class="eyebrow">04 · Step 1 — Schema</p>
+      <h2 class="display">Two tables. <em>Zero</em> plaintext secrets.</h2>
+      <div class="schema">
+        <div class="tbl"><h3 class="mono">users</h3>
+          <ul class="mono"><li>id <i>serial pk</i></li><li>username <i>unique</i></li><li>full_name</li><li class="hot">password_salt <i>16 B hex</i></li><li class="hot">password_hash <i>SHA-256 hex</i></li><li>hash_algorithm</li><li>created_at · last_login_at</li></ul></div>
+        <div class="fk mono">1 ── ∞<br/><small>owner_id · ON DELETE CASCADE</small></div>
+        <div class="tbl"><h3 class="mono">records</h3>
+          <ul class="mono"><li>id <i>serial pk</i></li><li>owner_id <i>fk → users</i></li><li>category <i>medical | financial</i></li><li class="hot">ciphertext <i>base64</i></li><li class="hot">iv <i>96-bit</i></li><li class="hot">auth_tag <i>128-bit</i></li><li>cipher_algorithm · key_version</li></ul></div>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section class="slide" data-notes="Step 2. A fresh 128-bit salt per user from the CSPRNG, then SHA-256 over salt then password. The live demo on this slide computes it in the browser: the same password with two salts gives two unrelated hashes, which is why rainbow tables fail. Verification is constant time, and unknown usernames are hashed against a dummy salt.">
+      <p class="eyebrow">05 · Step 2 — Password hashing</p>
+      <h2 class="display">hash = SHA-256( <em>salt</em> ‖ password )</h2>
+      <div class="demo">
+        <div class="demo-pw mono">password = <b>"Summer2026!"</b> <span class="muted">(same for both users)</span></div>
+        <div class="demo-row"><span class="who mono">alice</span><div><small>salt</small><code id="s1">…</code><small>hash</small><code id="h1" class="hot">…</code></div></div>
+        <div class="demo-row"><span class="who mono">bob</span><div><small>salt</small><code id="s2">…</code><small>hash</small><code id="h2" class="hot">…</code></div></div>
+        <button class="btn btn-sm" id="reroll" type="button">New salts ↻</button>
+      </div>
+      <ul class="ticks"><li>Unique 128-bit CSPRNG salt defeats rainbow tables</li><li><code>timingSafeEqual</code> comparison</li><li>Dummy hash for unknown users, so no enumeration by timing</li></ul>
+    </section>
+
+    <!-- 6 -->
+    <section class="slide" data-notes="Step 3. AES-256 in GCM mode. A new random 96-bit IV for every write, a 128-bit authentication tag, and the owner id as additional authenticated data. Encryption happens before the INSERT is built, so the database driver never sees plaintext. Why GCM over CBC or ECB: integrity is built in.">
+      <p class="eyebrow">06 · Step 3 — Encryption</p>
+      <h2 class="display">AES-256-<em>GCM</em>, sealed before the INSERT.</h2>
+      <div class="split">
+<pre class="code"><code>const iv = randomBytes(12);          // fresh per row
+const c  = createCipheriv("aes-256-gcm", aesKey, iv);
+c.setAAD(`…:owner=${ownerId}`);      // bind to owner
+const ct = c.update(json) + c.final();
+const tag = c.getAuthTag();          // 128-bit MAC
+
+await db.insert(records)
+  .values({ ownerId, ciphertext, iv, authTag });</code></pre>
+        <dl class="params mono">
+          <dt>key</dt><dd>256-bit (HKDF-derived)</dd>
+          <dt>iv</dt><dd>96-bit random, never reused</dd>
+          <dt>tag</dt><dd>128-bit — integrity</dd>
+          <dt>aad</dt><dd>owner id — anti-swap</dd>
+          <dt>vs CBC</dt><dd>no padding oracle, tamper-evident</dd>
+          <dt>vs ECB</dt><dd>no pattern leakage</dd>
+        </dl>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section class="slide" data-notes="The key is the crown jewel. One 256-bit master secret, kept out of the database. HKDF derives independent keys for record encryption and for session signing. Every row has a key_version column so we can rotate keys.">
+      <p class="eyebrow">07 · Key management</p>
+      <h2 class="display">The key <em>never</em> lives with the data.</h2>
+      <div class="hkdf">
+        <div class="k k-master mono"><small>master key · 256-bit</small>VAULT_MASTER_KEY<br/><span class="muted">env var or isolated key store</span></div>
+        <div class="k-arrow mono">HKDF-SHA-256 →</div>
+        <div class="k-subs">
+          <div class="k mono"><small>info = records-aes-256-gcm</small>AES record key</div>
+          <div class="k mono"><small>info = session-hmac-sha256</small>Session HMAC key</div>
+        </div>
+      </div>
+      <ul class="ticks"><li>A stolen database dump contains no key material</li><li>Purpose-separated keys limit blast radius</li><li><code>key_version</code> per row enables rotation</li></ul>
+    </section>
+
+    <!-- 8 -->
+    <section class="slide" data-notes="Step 4. Walk through the request lifecycle. The session is an HMAC-signed, HttpOnly, SameSite=Strict cookie. The query is filtered by owner. GCM verifies before decrypting. Output is rendered with textContent, so stored data can never become script.">
+      <p class="eyebrow">08 · Step 4 — Secure retrieval</p>
+      <h2 class="display">Login → query → <em>verify</em> → decrypt → display.</h2>
+      <ol class="steps">
+        <li><b>Authenticate</b><span>salted hash check, constant time</span></li>
+        <li><b>Session</b><span>HMAC-signed · HttpOnly · SameSite=Strict · 30 min</span></li>
+        <li><b>Query</b><span><code>WHERE owner_id = $1</code> (parameterised)</span></li>
+        <li><b>Verify</b><span>GCM tag + owner AAD, refused if altered</span></li>
+        <li><b>Decrypt</b><span>in server memory only, never cached (<code>no-store</code>)</span></li>
+        <li><b>Display</b><span>HTTPS → <code>textContent</code> (XSS-safe)</span></li>
+      </ol>
+    </section>
+
+    <!-- 9 -->
+    <section class="slide" data-notes="Switch to the live system now. Create an account and show the hash preview. Seal a record and show the receipt. Toggle the ciphertext view. Open Database evidence. Run the tamper test. Every claim on the previous slides is visible on screen.">
+      <p class="eyebrow">09 · Evidence &amp; testing</p>
+      <h2 class="display">Don’t trust us. <em>Watch it.</em></h2>
+      <div class="split">
+        <ol class="demo-list">
+          <li>Create account → salt + hash preview</li>
+          <li>Seal a medical record → ciphertext receipt</li>
+          <li>Toggle “Show stored ciphertext”</li>
+          <li>Database evidence → raw <code>users</code> / <code>records</code></li>
+          <li>Tamper test → 1 flipped bit is <b>rejected</b></li>
+          <li>Wrong password / forged cookie → <b>401</b></li>
+        </ol>
+        <div class="results mono">
+          <div><span>T1</span>same password → different hashes<b>PASS</b></div>
+          <div><span>T4</span>records table holds ciphertext only<b>PASS</b></div>
+          <div><span>T5</span>same text → different ciphertext<b>PASS</b></div>
+          <div><span>T6</span>owner sees verified plaintext<b>PASS</b></div>
+          <div><span>T7</span>bit-flip detected by GCM<b>PASS</b></div>
+          <div><span>T8</span>owner swap detected (AAD)<b>PASS</b></div>
+          <div><span>T10</span>cross-user delete blocked<b>PASS</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10 -->
+    <section class="slide" data-notes="Close by being honest about residual risk; panels reward that. SHA-256 is fast, so the next step is Argon2id. Envelope encryption with a KMS for rotation. Login throttling and MFA. Then invite questions.">
+      <p class="eyebrow">10 · Threats, limits &amp; defense</p>
+      <h2 class="display">Where it holds, and what <em>comes next</em>.</h2>
+      <div class="split">
+        <table class="threats">
+          <tr><th>Threat</th><th>Control</th></tr>
+          <tr><td>DB dump stolen</td><td>hash + AES-GCM, key off-DB</td></tr>
+          <tr><td>Rainbow tables</td><td>unique 128-bit salts</td></tr>
+          <tr><td>Row tampering</td><td>GCM auth tag</td></tr>
+          <tr><td>Row swapping</td><td>owner-bound AAD</td></tr>
+          <tr><td>Session forgery</td><td>HMAC-SHA-256 token</td></tr>
+          <tr><td>XSS / CSRF</td><td>CSP · textContent · SameSite</td></tr>
+        </table>
+        <div class="next">
+          <p class="eyebrow">Roadmap</p>
+          <ul class="ticks"><li>Argon2id / PBKDF2 key stretching</li><li>Envelope encryption with KMS/HSM</li><li>Login throttling + TOTP MFA</li><li>Append-only decryption audit log</li></ul>
+          <p class="qa display">Questions?</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <aside class="notes hidden" id="notes" aria-live="polite"></aside>
+  <nav class="deck-ui" aria-label="Slide controls">
+    <a href="/" class="btn btn-sm btn-ghost">Vault</a>
+    <button class="btn btn-sm btn-ghost" id="prev" type="button" aria-label="Previous slide">←</button>
+    <span class="mono counter" id="counter">1 / 10</span>
+    <button class="btn btn-sm btn-ghost" id="next" type="button" aria-label="Next slide">→</button>
+    <button class="btn btn-sm btn-ghost" id="toggle-notes" type="button">Notes (N)</button>
+    <button class="btn btn-sm btn-ghost" id="fs" type="button">Fullscreen (F)</button>
+    <button class="btn btn-sm btn-brass" id="print" type="button">Export PDF</button>
+  </nav>
+  <div class="progress" aria-hidden="true"><span id="bar"></span></div>
+  <script type="module" src="/js/deck.js"></script>
+</body>
+</html>
